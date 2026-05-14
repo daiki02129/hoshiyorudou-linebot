@@ -1,4 +1,5 @@
 import os
+
 import redis as _redis_lib
 from collections import deque
 import json
@@ -1108,6 +1109,44 @@ def serve_image(img_id):
 @app.route("/", methods=["GET"])
 def health_check():
     return "星夜堂 LINE Bot is running ✨"
+@app.route('/liff')
+def serve_liff():
+    liff_path = os.path.join(os.path.dirname(__file__), 'liff_onboarding.html')
+    try:
+        with open(liff_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        return content, 200, {'Content-Type': 'text/html; charset=utf-8'}
+    except FileNotFoundError:
+        return "LIFF page not found", 404
+
+@app.route('/api/liff-result', methods=['POST'])
+def liff_result():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "no data"}), 400
+    line_user_id = data.get('line_user_id')
+    if not line_user_id:
+        return jsonify({"error": "no user id"}), 400
+    profile = data.get('profile', {})
+    tags = data.get('tags', {})
+    user = get_user(line_user_id) or {}
+    user.update({
+        'state': 'registered',
+        'name': profile.get('name'),
+        'birthday': profile.get('birthday'),
+        'birth_time': profile.get('birthtime'),
+        'birthplace': profile.get('birthplace'),
+        'diagnosis_tags': tags,
+        'diagnosis_done': True
+    })
+    set_user(line_user_id, user)
+    try:
+        name = profile.get('name', '')
+        msg = f"✨ {name}さん、診断が完了しました！\n\n今日から、あなただけにカスタマイズされた占いをお届けします🌙\n\n「今日の運勢」を送ってみてください📅"
+        line_bot_api.push_message(line_user_id, TextSendMessage(text=msg))
+    except Exception as e:
+        print(f"Push error: {e}")
+    return jsonify({"status": "ok"})
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
